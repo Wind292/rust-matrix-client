@@ -34,16 +34,22 @@ impl Server {
         let resp = self.GET("login").await?;
         let supported_auths = resp.as_array();
         
+        let mut supports_password_login = false;
         match supported_auths {
             Some(arr) => {
                 for auth in arr { 
-                    if auth.as_str().unwrap_or("Not A String") == "m.login.password" {  // Supports password login
-                        
-                    }
+                    if auth.as_str().unwrap_or("Not A String") == "m.login.password" { 
+                        supports_password_login = true;
+                    } 
                 }
             }
             None => return Err(errors::AuthError::InvalidJson.into())
         }
+
+        if supports_password_login == false { 
+            return Err(errors::AuthError::UnsupportedAuthType.into());
+        }
+        // Now we can be sure that the server supports password logins 
 
         Ok(())
     } 

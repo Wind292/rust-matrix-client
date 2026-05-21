@@ -4,4 +4,7 @@ use thiserror::Error;
 pub enum AuthError {
     #[error("invalid json")]
     InvalidJson,
+
+    #[error("Unsupported Auth type")]
+    UnsupportedAuthType
 }
