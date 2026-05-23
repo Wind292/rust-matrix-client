@@ -10,7 +10,7 @@ pub struct ClientState {
     next_token: String,
 }
 
-
+#[derive(Debug)]
 pub struct Cache { 
     events: Vec<Event>,
     before_token: String,
@@ -85,7 +85,7 @@ impl Cache {
             };
 
             let before_token = room.get("timeline").and_then(|f| f.get("prev_batch")).and_then(|f| f.as_str()).and_then(|f| Some(f.to_string())).ok_or(MissingRequiredField)?;
-            let total_history = room.get("timeline").and_then(|f| f.get("limited")).and_then(|f| f.as_bool());
+            let total_history = room.get("timeline").and_then(|f| f.get("limited")).and_then(|f| f.as_bool()).and_then(|f| Some(!f));
             let timeline_cache = Cache {  // Second is timeline
                 events: timeline_events,
                 before_token: before_token,
@@ -109,13 +109,13 @@ fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
     })
 }
 
-
+#[derive(Debug)]
 pub enum Event {
     Message(MessageEvent),
     Name(NameEvent),
     Unknown(UnknownEvent)
 }
-
+#[derive(Debug)]
 pub struct MessageEvent { 
     pub body: String,
     pub msgtype: String,
@@ -158,7 +158,7 @@ impl MessageEvent {
 
     fn display(&self) -> bool { true }
 }
-
+#[derive(Debug)]
 pub struct NameEvent {
     pub name: String,
     pub sender: Option<String>,
@@ -189,7 +189,7 @@ impl NameEvent {
 
     fn display(&self) -> bool { true }
 }
-
+#[derive(Debug)]
 pub struct UnknownEvent {
     pub event_type: String,
     pub sender: Option<String>,
