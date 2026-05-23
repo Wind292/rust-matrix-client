@@ -5,6 +5,8 @@ This project is an implementation of a Matrix compatable client written in entir
 Features include:
 
 - Password login
+- Listing joined rooms
+- Creating rooms
 
 Intended features:
 
@@ -14,5 +16,4 @@ Intended features:
 - Legacy Auth API suppport
 - Message hilighting
 - Room joining
-- Room creation
 - Notifications

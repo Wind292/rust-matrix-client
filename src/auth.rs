@@ -3,7 +3,7 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::errors;
-use crate::errors::AuthError;
+use crate::errors::CustomError;
 use crate::utils::unauth_get;
 use crate::utils::unauth_post;
 
@@ -41,11 +41,11 @@ impl AuthState {
                     }
                 }
             }
-            None => return Err(AuthError::InvalidJson.into()),
+            None => return Err(CustomError::InvalidJson.into()),
         }
 
         if supports_password_login == false {
-            return Err(AuthError::UnsupportedAuthType.into());
+            return Err(CustomError::UnsupportedAuthType.into());
         }
         // Now we can be sure that the server supports password logins
 
@@ -77,12 +77,12 @@ impl AuthState {
 
         let unwrapped_token = match token {
             Some(t) => t,
-            None => return Err(AuthError::MissingTokenInResponse.into()),
+            None => return Err(CustomError::MissingTokenInResponse.into()),
         };
 
         let unwrapped_user_id = match user_id {
             Some(t) => t,
-            None => return Err(AuthError::MissingUserIdInResponse.into()),
+            None => return Err(CustomError::MissingUserIdInResponse.into()),
         };
 
         let client = AuthState {
@@ -106,7 +106,11 @@ impl AuthState {
             .await?
             .json::<serde_json::Value>()
             .await?;
-            
+        
+        if resp.get("errcode").is_some() {
+            return Err(errors::MatrixError::json(resp).into())
+        }
+
         Ok(resp)
     }
 
@@ -120,7 +124,29 @@ impl AuthState {
             .await?
             .json::<serde_json::Value>()
             .await?;
-            
+
+        if resp.get("errcode").is_some() {
+            return Err(errors::MatrixError::json(resp).into())
+        }    
+        
+        Ok(resp)
+    }
+
+    pub async fn auth_put(&mut self, path: &str, body: &str) -> Result<Value, Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+
+        let resp = client.put(self.server_address.to_string() + "/_matrix/client/" + path)
+            .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
+            .body(body.to_owned())
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        if resp.get("errcode").is_some() {
+            return Err(errors::MatrixError::json(resp).into())
+        }
+
         Ok(resp)
     }
 
@@ -128,6 +154,7 @@ impl AuthState {
         self.token.clone()
     }
 
+    
 
 }
 
@@ -140,8 +167,8 @@ pub async fn get_oauth2_support(server_address: &str) -> Result<bool, Box<dyn st
     match response_code {
         404 => return Ok(false),
         200 => return Ok(true),
-        429 => return Err(AuthError::RateLimited.into()),
-        _ => return Err(AuthError::AuthMetadataQueryUnrecognizedCode.into())
+        429 => return Err(CustomError::RateLimited.into()),
+        _ => return Err(CustomError::AuthMetadataQueryUnrecognizedCode.into())
     }
 }
 

@@ -2,7 +2,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum AuthError {
+pub enum CustomError {
     #[error("invalid json")]
     InvalidJson,
 
@@ -20,6 +20,15 @@ pub enum AuthError {
     
     #[error("Unrecognized status code from `auth_metadata`")]
     AuthMetadataQueryUnrecognizedCode,
+
+    #[error("Joined rooms missing from server response")]
+    JoinedRoomsMissingFromServerResponse,    
+
+    #[error("Server sent invalid data type for some field")]
+    InvalidDataType,
+
+    #[error("Did not receive some required field from the server")]
+    MissingRequiredField,    
 }
 
 #[derive(Debug, Error)]
