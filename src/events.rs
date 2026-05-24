@@ -28,8 +28,6 @@ impl EventState {
             url = format!("{}?timeout=30000&since={}", url, since.unwrap());
         }
 
-        eprintln!("{}", url);
-
         let resp = auth_state.auth_get(&url).await?;
 
         let account_data = resp.get("account_data");
@@ -162,6 +160,8 @@ pub async fn send_event(auth_state: &mut AuthState, roomid: String, event_type: 
 pub async fn get_messages(auth_state: &mut AuthState, roomid: String, dir: &str, limit: u64, from: Option<String>) -> Result<Value, Box<dyn std::error::Error>> {
     let mut url = format!("v3/rooms/{}/messages?dir={}&limit={}", roomid, dir, limit.to_string());
     
+   
+
     if from.is_some() { // add the from param if exists
         url = format!("{}&from={}", url.to_owned(), &from.unwrap());
     }

@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+color-eyre = "0.6.5"
+crossterm = "0.29.0"
+cryptex = "2.3.0"
+ratatui = "0.30.0"
 reqwest = { version = "0.13", features = ["json"] }
 serde_json = "1.0.149"
 thiserror = "2.0.18"

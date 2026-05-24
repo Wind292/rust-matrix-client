@@ -1,5 +1,6 @@
 use core::time;
 use std::collections::HashMap;
+use std::mem::transmute;
 use std::os::unix::process::parent_id;
 
 use serde_json::Value;
@@ -20,17 +21,23 @@ pub struct Cache {
 
 impl Cache {
     pub async fn update_before(&mut self, auth_state: &mut crate::auth::AuthState) -> Result<(), Box<dyn std::error::Error>> {
-        let response = get_messages(auth_state, self.roomid.clone(), "b", 10, Some(self.before_token.clone())).await?;
+        let mut response = get_messages(auth_state, self.roomid.clone(), "b", 20, Some(self.before_token.clone())).await?;
+        let mut events: &mut Vec<Value> = &mut response.get("chunk").and_then(|f| f.as_array()).ok_or(MissingRequiredField)?.to_vec();
 
-        let events = response.get("chunk").and_then(|f| f.as_array()).ok_or(MissingRequiredField)?;
-
+        // events;
         for event_json in events {
-
             let event: Event = parse_event(event_json.to_owned())?;
             self.events.push(event);
         }
 
-        self.before_token = response.get("end").and_then(|f| f.as_str()).and_then(|f| Some(f.to_string())).ok_or(MissingRequiredField)?;
+        let end_token = response.get("end").and_then(|f| f.as_str()).and_then(|f| Some(f.to_string()));
+        
+        if end_token.is_none() { 
+            self.total_history = Some(true);
+            return Ok(());
+        }
+
+        self.before_token = end_token.unwrap();
 
         Ok(())
     }
@@ -64,14 +71,15 @@ impl Cache {
             let mut state_events: Vec<Event> = Vec::new();
             let mut timeline_events: Vec<Event> = Vec::new();
             
-            let state = room.get("state").and_then(|f| f.get("events")).and_then(|f| f.as_array()).ok_or(MissingRequiredField)?;
-            let timeline = room.get("timeline").and_then(|f| f.get("events")).and_then(|f| f.as_array()).ok_or(MissingRequiredField)?;
+            let state: &Vec<Value> = room.get("state").and_then(|f| f.get("events")).and_then(|f| f.as_array()).ok_or(MissingRequiredField)?;
+            let timeline: &Vec<Value> = room.get("timeline").and_then(|f| f.get("events")).and_then(|f| f.as_array()).ok_or(MissingRequiredField)?;
+
 
             // Populate the event lists
-            for state_event in state { 
+            for state_event in state.iter().rev() { 
                 state_events.push(parse_event(state_event.to_owned())?);
             }            
-            for timeline_event in timeline {
+            for timeline_event in timeline.iter().rev() {
                 timeline_events.push(parse_event(timeline_event.to_owned())?);
             }
 

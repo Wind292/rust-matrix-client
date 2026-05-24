@@ -1,6 +1,8 @@
 use reqwest::header::AUTHORIZATION;
+use reqwest::header::Entry;
 use serde_json::Value;
 use serde_json::json;
+use cryptex::{get_os_keyring, KeyRing};
 
 use crate::errors;
 use crate::errors::CustomError;
@@ -154,8 +156,34 @@ impl AuthState {
         self.token.clone()
     }
 
-    
+    pub fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut keyring = get_os_keyring("rust-matrix")?;
+        keyring.set_secret("token", self.token.as_bytes())?;
+        keyring.set_secret("server-addr", self.server_address.as_bytes())?;
+        keyring.set_secret("user-id", self.user_id.as_bytes())?;
+        keyring.set_secret("expiration", self.expiration.unwrap_or(0).to_string())?;
+        
+        Ok(())
+    }
 
+    pub fn delete_from_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut keyring = get_os_keyring("rust-matrix")?;
+        keyring.delete_secret("api-token")?;
+        keyring.delete_secret("server-addr")?;
+        keyring.delete_secret("user-id")?;
+        keyring.delete_secret("expiration")?;
+        Ok(())
+    }
+    
+    pub fn revive_from_disk(&self) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut keyring = get_os_keyring("rust-matrix")?;
+        let token = keyring.get_secret("token")?.to_string();
+        let server_address = keyring.get_secret("server-addr")?.to_string();
+        let user_id = keyring.get_secret("user-id")?.to_string();
+        let expiration: i64 = keyring.get_secret("expiration")?.to_string().parse().unwrap_or(0);
+
+        Ok(AuthState { server_address, user_id, token, refresh_token: None, device_id: None, expiration: Some(expiration) })
+    }
 }
 
 
