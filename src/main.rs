@@ -13,4 +13,6 @@ async fn main() -> io::Result<()> {
     let result = gui::App::default().run(&mut terminal).await;
     ratatui::restore();
     result
+
+
 }

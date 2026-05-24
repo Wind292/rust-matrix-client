@@ -179,44 +179,63 @@ impl AuthState {
         self.token.clone()
     }
 
-    pub fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut keyring = get_os_keyring("rust-matrix")?;
-        keyring.set_secret("token", self.token.as_bytes())?;
-        keyring.set_secret("server-addr", self.server_address.as_bytes())?;
-        keyring.set_secret("user-id", self.user_id.as_bytes())?;
-        keyring.set_secret("expiration", self.expiration.unwrap_or(0).to_string())?;
+    pub async fn save_to_disk(&self) -> Option<()> {
+        let token = self.token.clone();
+        let server_address = self.server_address.clone();
+        let user_id = self.user_id.clone();
+        let expiration = self.expiration.unwrap_or(0).to_string();
 
-        Ok(())
-    }
-
-    pub fn delete_from_disk(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut keyring = get_os_keyring("rust-matrix")?;
-        keyring.delete_secret("api-token")?;
-        keyring.delete_secret("server-addr")?;
-        keyring.delete_secret("user-id")?;
-        keyring.delete_secret("expiration")?;
-        Ok(())
-    }
-
-    pub fn revive_from_disk(&self) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut keyring = get_os_keyring("rust-matrix")?;
-        let token = keyring.get_secret("token")?.to_string();
-        let server_address = keyring.get_secret("server-addr")?.to_string();
-        let user_id = keyring.get_secret("user-id")?.to_string();
-        let expiration: i64 = keyring
-            .get_secret("expiration")?
-            .to_string()
-            .parse()
-            .unwrap_or(0);
-
-        Ok(AuthState {
-            server_address,
-            user_id,
-            token,
-            refresh_token: None,
-            device_id: None,
-            expiration: Some(expiration),
+        tokio::task::spawn_blocking(move || {
+            let mut keyring = get_os_keyring("rust-matrix").ok()?;
+            keyring.set_secret("token", token.as_bytes()).ok()?;
+            keyring.set_secret("server-addr", server_address.as_bytes()).ok()?;
+            keyring.set_secret("user-id", user_id.as_bytes()).ok()?;
+            keyring.set_secret("expiration", expiration.as_bytes()).ok()?;
+            Some(())
         })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    pub async fn delete_from_disk() -> Option<()> {
+        tokio::task::spawn_blocking(|| {
+            let mut keyring = get_os_keyring("rust-matrix").ok()?;
+            keyring.delete_secret("token").ok()?;
+            keyring.delete_secret("server-addr").ok()?;
+            keyring.delete_secret("user-id").ok()?;
+            keyring.delete_secret("expiration").ok()?;
+            Some(())
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    pub async fn revive_from_disk() -> Option<Self> {
+        tokio::task::spawn_blocking(|| {
+            let mut keyring = get_os_keyring("rust-matrix").ok()?;
+            let token = keyring.get_secret("token").ok()?.to_string();
+            let server_address = keyring.get_secret("server-addr").ok()?.to_string();
+            let user_id = keyring.get_secret("user-id").ok()?.to_string();
+            let expiration: i64 = keyring
+                .get_secret("expiration")
+                .ok()?
+                .to_string()
+                .parse()
+                .unwrap_or(0);
+            Some(AuthState {
+                server_address,
+                user_id,
+                token,
+                refresh_token: None,
+                device_id: None,
+                expiration: Some(expiration),
+            })
+        })
+        .await
+        .ok()  // unwrap JoinError -> Option<Option<AuthState>>
+        .flatten() 
     }
 }
 
