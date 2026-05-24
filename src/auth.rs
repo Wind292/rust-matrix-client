@@ -1,26 +1,26 @@
+use cryptex::{KeyRing, get_os_keyring};
 use reqwest::header::AUTHORIZATION;
 use reqwest::header::Entry;
 use serde_json::Value;
 use serde_json::json;
-use cryptex::{get_os_keyring, KeyRing};
 
 use crate::errors;
 use crate::errors::CustomError;
 use crate::utils::unauth_get;
 use crate::utils::unauth_post;
 
-
+#[derive(Debug, Default, Clone)]
 pub struct AuthState {
     pub server_address: String,
     pub user_id: String,
     pub token: String,
     pub refresh_token: Option<String>,
     pub device_id: Option<String>,
-    pub expiration: Option<i64>
+    pub expiration: Option<i64>,
 }
 
 impl AuthState {
-    pub async fn login_password (
+    pub async fn login_password(
         server_address: &str,
         username: &str,
         password: &str,
@@ -62,20 +62,32 @@ impl AuthState {
                 "type": "m.login.password"
             }
         );
-            
-        let post_response = unauth_post(server_address, "v3/login", &login_packet_json.to_string()).await?;
 
-        if post_response.get("errcode").is_some() { // Server returned an errorcode, return it as MatrixError
-            return Err(errors::MatrixError::json(post_response).into())
+        let post_response =
+            unauth_post(server_address, "v3/login", &login_packet_json.to_string()).await?;
+
+        if post_response.get("errcode").is_some() {
+            // Server returned an errorcode, return it as MatrixError
+            return Err(errors::MatrixError::json(post_response).into());
         }
 
-
-        let token = post_response.get("access_token").and_then(|t| t.as_str()).and_then(|t| Some(t.to_string()));
-        let user_id = post_response.get("user_id").and_then(|t| t.as_str()).and_then(|t| Some(t.to_string()));
-        let refresh_token = post_response.get("refresh_token").and_then(|t| t.as_str()).and_then(|t| Some(t.to_string()));
-        let device_id = post_response.get("device_id").and_then(|t| t.as_str()).and_then(|t| Some(t.to_string()));
+        let token = post_response
+            .get("access_token")
+            .and_then(|t| t.as_str())
+            .and_then(|t| Some(t.to_string()));
+        let user_id = post_response
+            .get("user_id")
+            .and_then(|t| t.as_str())
+            .and_then(|t| Some(t.to_string()));
+        let refresh_token = post_response
+            .get("refresh_token")
+            .and_then(|t| t.as_str())
+            .and_then(|t| Some(t.to_string()));
+        let device_id = post_response
+            .get("device_id")
+            .and_then(|t| t.as_str())
+            .and_then(|t| Some(t.to_string()));
         let expiration = post_response.get("expires_in_ms").and_then(|t| t.as_i64());
-
 
         let unwrapped_token = match token {
             Some(t) => t,
@@ -102,24 +114,30 @@ impl AuthState {
     pub async fn auth_get(&mut self, path: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
-        let resp = client.get(self.server_address.to_string() + "/_matrix/client/" + path)
+        let resp = client
+            .get(self.server_address.to_string() + "/_matrix/client/" + path)
             .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
             .send()
             .await?
             .json::<serde_json::Value>()
             .await?;
-        
+
         if resp.get("errcode").is_some() {
-            return Err(errors::MatrixError::json(resp).into())
+            return Err(errors::MatrixError::json(resp).into());
         }
 
         Ok(resp)
     }
 
-    pub async fn auth_post(&mut self, path: &str, body: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn auth_post(
+        &mut self,
+        path: &str,
+        body: &str,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
-        let resp = client.post(self.server_address.to_string() + "/_matrix/client/" + path)
+        let resp = client
+            .post(self.server_address.to_string() + "/_matrix/client/" + path)
             .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
             .body(body.to_owned())
             .send()
@@ -128,16 +146,21 @@ impl AuthState {
             .await?;
 
         if resp.get("errcode").is_some() {
-            return Err(errors::MatrixError::json(resp).into())
-        }    
-        
+            return Err(errors::MatrixError::json(resp).into());
+        }
+
         Ok(resp)
     }
 
-    pub async fn auth_put(&mut self, path: &str, body: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn auth_put(
+        &mut self,
+        path: &str,
+        body: &str,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
-        let resp = client.put(self.server_address.to_string() + "/_matrix/client/" + path)
+        let resp = client
+            .put(self.server_address.to_string() + "/_matrix/client/" + path)
             .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
             .body(body.to_owned())
             .send()
@@ -146,7 +169,7 @@ impl AuthState {
             .await?;
 
         if resp.get("errcode").is_some() {
-            return Err(errors::MatrixError::json(resp).into())
+            return Err(errors::MatrixError::json(resp).into());
         }
 
         Ok(resp)
@@ -162,7 +185,7 @@ impl AuthState {
         keyring.set_secret("server-addr", self.server_address.as_bytes())?;
         keyring.set_secret("user-id", self.user_id.as_bytes())?;
         keyring.set_secret("expiration", self.expiration.unwrap_or(0).to_string())?;
-        
+
         Ok(())
     }
 
@@ -174,29 +197,38 @@ impl AuthState {
         keyring.delete_secret("expiration")?;
         Ok(())
     }
-    
+
     pub fn revive_from_disk(&self) -> Result<Self, Box<dyn std::error::Error>> {
         let mut keyring = get_os_keyring("rust-matrix")?;
         let token = keyring.get_secret("token")?.to_string();
         let server_address = keyring.get_secret("server-addr")?.to_string();
         let user_id = keyring.get_secret("user-id")?.to_string();
-        let expiration: i64 = keyring.get_secret("expiration")?.to_string().parse().unwrap_or(0);
+        let expiration: i64 = keyring
+            .get_secret("expiration")?
+            .to_string()
+            .parse()
+            .unwrap_or(0);
 
-        Ok(AuthState { server_address, user_id, token, refresh_token: None, device_id: None, expiration: Some(expiration) })
+        Ok(AuthState {
+            server_address,
+            user_id,
+            token,
+            refresh_token: None,
+            device_id: None,
+            expiration: Some(expiration),
+        })
     }
 }
 
-
-
-pub async fn get_oauth2_support(server_address: &str) -> Result<bool, Box<dyn std::error::Error>> { 
-    let response = reqwest::get(server_address.to_string() + "/_matrix/client/v1/auth_metadata" ).await?;
+pub async fn get_oauth2_support(server_address: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let response =
+        reqwest::get(server_address.to_string() + "/_matrix/client/v1/auth_metadata").await?;
     let response_code = response.status().as_u16();
 
     match response_code {
         404 => return Ok(false),
         200 => return Ok(true),
         429 => return Err(CustomError::RateLimited.into()),
-        _ => return Err(CustomError::AuthMetadataQueryUnrecognizedCode.into())
+        _ => return Err(CustomError::AuthMetadataQueryUnrecognizedCode.into()),
     }
 }
-

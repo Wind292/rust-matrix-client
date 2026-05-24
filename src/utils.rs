@@ -1,4 +1,7 @@
-pub async fn unauth_get(server_address: &str, path: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn unauth_get(
+    server_address: &str,
+    path: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let resp = reqwest::get(server_address.to_string() + "/_matrix/client/" + path)
         .await?
         .json::<serde_json::Value>()

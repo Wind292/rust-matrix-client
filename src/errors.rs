@@ -13,22 +13,22 @@ pub enum CustomError {
     RateLimited,
 
     #[error("Missing token in auth response")]
-    MissingTokenInResponse,    
-    
+    MissingTokenInResponse,
+
     #[error("Missing user_id in auth response")]
-    MissingUserIdInResponse,    
-    
+    MissingUserIdInResponse,
+
     #[error("Unrecognized status code from `auth_metadata`")]
     AuthMetadataQueryUnrecognizedCode,
 
     #[error("Joined rooms missing from server response")]
-    JoinedRoomsMissingFromServerResponse,    
+    JoinedRoomsMissingFromServerResponse,
 
     #[error("Server sent invalid data type for some field")]
     InvalidDataType,
 
     #[error("Did not receive some required field from the server")]
-    MissingRequiredField,    
+    MissingRequiredField,
 }
 
 #[derive(Debug, Error)]
@@ -39,6 +39,14 @@ pub enum MatrixError {
 
 impl MatrixError {
     pub fn json(json: Value) -> Self {
-        MatrixError::MatrixError(json.get("errcode").and_then(|f| f.as_str()).unwrap_or("Not an Error").to_string(), json.get("error").and_then(|f| f.as_str()).and_then(|t| Some(t.to_string())))
+        MatrixError::MatrixError(
+            json.get("errcode")
+                .and_then(|f| f.as_str())
+                .unwrap_or("Not an Error")
+                .to_string(),
+            json.get("error")
+                .and_then(|f| f.as_str())
+                .and_then(|t| Some(t.to_string())),
+        )
     }
 }
