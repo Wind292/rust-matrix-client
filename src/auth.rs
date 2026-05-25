@@ -111,12 +111,12 @@ impl AuthState {
         Ok(client)
     }
 
-    pub async fn auth_get(&mut self, path: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn auth_get(self, path: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let resp = client
             .get(self.server_address.to_string() + "/_matrix/client/" + path)
-            .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
             .send()
             .await?
             .json::<serde_json::Value>()
@@ -130,7 +130,7 @@ impl AuthState {
     }
 
     pub async fn auth_post(
-        &mut self,
+        self,
         path: &str,
         body: &str,
     ) -> Result<Value, Box<dyn std::error::Error>> {
@@ -138,7 +138,7 @@ impl AuthState {
 
         let resp = client
             .post(self.server_address.to_string() + "/_matrix/client/" + path)
-            .header(AUTHORIZATION, format!("Bearer {}", self.get_token().await))
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
             .body(body.to_owned())
             .send()
             .await?
@@ -215,9 +215,9 @@ impl AuthState {
     pub async fn revive_from_disk() -> Option<Self> {
         tokio::task::spawn_blocking(|| {
             let mut keyring = get_os_keyring("rust-matrix").ok()?;
-            let token = keyring.get_secret("token").ok()?.to_string();
-            let server_address = keyring.get_secret("server-addr").ok()?.to_string();
-            let user_id = keyring.get_secret("user-id").ok()?.to_string();
+            let token = String::from_utf8(keyring.get_secret("token").ok()?.to_vec()).unwrap();
+            let server_address = String::from_utf8(keyring.get_secret("server-addr").ok()?.to_vec()).unwrap();
+            let user_id = String::from_utf8(keyring.get_secret("user-id").ok()?.to_vec()).unwrap();
             let expiration: i64 = keyring
                 .get_secret("expiration")
                 .ok()?

@@ -29,35 +29,41 @@ impl EventState {
 
     pub async fn sync(
         &mut self,
-        auth_state: &mut AuthState,
+        auth_state: AuthState,
         since: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let mut url = "v3/sync".to_string();
 
         if since.is_some() {
             url = format!("{}?timeout=30000&since={}", url, since.unwrap());
         }
 
-        let resp = auth_state.auth_get(&url).await?;
+        let response = auth_state.auth_get(&url).await;
+        match response {
+            Ok(resp) => {
+                let account_data = resp.get("account_data");
+                let device_one_time_keys_count = resp.get("device_one_time_keys_count");
+                let device_unused_fallback_key_types = resp.get("device_unused_fallback_key_types");
+                let rooms = resp.get("rooms").and_then(|f| Some(f.to_owned()));
+                let next_batch = resp.get("next_batch");
+                let presence = resp.get("presence");
 
-        let account_data = resp.get("account_data");
-        let device_one_time_keys_count = resp.get("device_one_time_keys_count");
-        let device_unused_fallback_key_types = resp.get("device_unused_fallback_key_types");
-        let rooms = resp.get("rooms").and_then(|f| Some(f.to_owned()));
-        let next_batch = resp.get("next_batch");
-        let presence = resp.get("presence");
-
-        self.account_data = account_data.cloned();
-        self.device_one_time_keys_count = device_one_time_keys_count.cloned();
-        self.device_unused_fallback_key_types = device_unused_fallback_key_types
-            .and_then(|t| t.as_array())
-            .cloned();
-        self.next_batch = next_batch
-            .cloned()
-            .and_then(|t| Some(t.as_str().unwrap_or("").to_string()));
-        self.presence = presence.cloned();
-        self.rooms = rooms;
-
+                self.account_data = account_data.cloned();
+                self.device_one_time_keys_count = device_one_time_keys_count.cloned();
+                self.device_unused_fallback_key_types = device_unused_fallback_key_types
+                    .and_then(|t| t.as_array())
+                    .cloned();
+                self.next_batch = next_batch
+                    .cloned()
+                    .and_then(|t| Some(t.as_str().unwrap_or("").to_string()));
+                self.presence = presence.cloned();
+                self.rooms = rooms;
+            },
+            Err(e) => {
+                let e: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
+                return Err(e)
+            },
+        }
         Ok(())
     }
 
@@ -69,7 +75,7 @@ impl EventState {
 }
 
 pub async fn get_rooms(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let response = auth_state.auth_get("v3/joined_rooms").await?;
 
@@ -77,7 +83,7 @@ pub async fn get_rooms(
 
     if rooms.is_none() {
         // Make sure the server responded with a `joined_rooms` field
-        return Err(errors::CustomError::JoinedRoomsMissingFromServerResponse.into());
+        return Err(errors::CustomError::MissingRequiredField.into());
     }
 
     let mut str_rooms: Vec<String> = Vec::new();
@@ -95,7 +101,7 @@ pub async fn get_rooms(
 }
 
 pub async fn leave_room(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
     roomid: String,
     reason: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -112,7 +118,7 @@ pub async fn leave_room(
 }
 
 pub async fn forget_room(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
     roomid: String,
     reason: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -129,7 +135,7 @@ pub async fn forget_room(
 }
 
 pub async fn room_summary(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
     roomid: String,
 ) -> Result<Room, Box<dyn std::error::Error>> {
     let response = auth_state
@@ -238,7 +244,7 @@ pub async fn send_event(
 
 // dir is direction can be 'f' or 'b'
 pub async fn get_messages(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
     roomid: String,
     dir: &str,
     limit: u64,
@@ -270,7 +276,7 @@ pub async fn get_messages(
 // this is bare bones see
 // 8.2 Creation for more additions
 pub async fn create_room(
-    auth_state: &mut AuthState,
+    auth_state: AuthState,
     name: &str,
     invites: Vec<&str>,
     preset: &str,

@@ -1,8 +1,9 @@
-use core::time;
+use core::{fmt, time};
 use std::collections::HashMap;
 use std::mem::transmute;
 use std::os::unix::process::parent_id;
-
+use tokio::sync::Mutex;
+use std::sync::Arc;
 use crate::errors::CustomError::*;
 use crate::events::{EventState, Message, get_messages};
 use serde_json::Value;
@@ -11,7 +12,8 @@ pub struct ClientState {
     next_token: String,
 }
 
-#[derive(Debug)]
+
+#[derive(Debug, Default, Clone)]
 pub struct Cache {
     events: Vec<Event>,
     before_token: String,
@@ -22,7 +24,7 @@ pub struct Cache {
 impl Cache {
     pub async fn update_before(
         &mut self,
-        auth_state: &mut crate::auth::AuthState,
+        auth_state: crate::auth::AuthState,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut response = get_messages(
             auth_state,
@@ -38,7 +40,6 @@ impl Cache {
             .ok_or(MissingRequiredField)?
             .to_vec();
 
-        // events;
         for event_json in events {
             let event: Event = parse_event(event_json.to_owned())?;
             self.events.push(event);
@@ -147,6 +148,15 @@ impl Cache {
 
         Ok(caches)
     }
+
+    pub fn spin_updater_thread(mutex: Arc<Mutex<Self>>) {
+        let mutex_clone = mutex.clone();
+        todo!();
+        tokio::spawn(async move {
+
+        });
+    }
+
 }
 
 fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
@@ -161,13 +171,21 @@ fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
     })
 }
 
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 pub enum Event {
     Message(MessageEvent),
     Name(NameEvent),
     Unknown(UnknownEvent),
 }
-#[derive(Debug)]
+
+impl Default for Event { 
+    fn default() -> Self {
+        Self::Unknown(UnknownEvent::default())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct MessageEvent {
     pub body: String,
     pub msgtype: String,
@@ -228,7 +246,8 @@ impl MessageEvent {
         true
     }
 }
-#[derive(Debug)]
+
+#[derive(Debug, Default, Clone)]
 pub struct NameEvent {
     pub name: String,
     pub sender: Option<String>,
@@ -266,7 +285,7 @@ impl NameEvent {
         true
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnknownEvent {
     pub event_type: String,
     pub sender: Option<String>,
@@ -303,3 +322,12 @@ impl UnknownEvent {
         true
     }
 }
+
+impl Default for UnknownEvent {
+    fn default() -> Self {
+        Self { event_type: "default".to_string(), sender: None, event_id: None, time: None }
+    }
+}
+
+
+

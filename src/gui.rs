@@ -52,7 +52,6 @@ impl App {
     }
 
     async fn handle_events(&mut self) -> io::Result<()> {
-
         match self.state { 
             AppState::Start => {
                 let auth = AuthState::revive_from_disk().await;
