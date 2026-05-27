@@ -5,8 +5,8 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Alignment, Constraint, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
-use ratatui::widgets::Widget;
 use ratatui::widgets::BorderType;
+use ratatui::widgets::Widget;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -95,7 +95,9 @@ impl LoginWidget {
     }
 
     async fn submit(&mut self) {
-        if !(self.server_address.starts_with("https://") || self.server_address.starts_with("http://")) {
+        if !(self.server_address.starts_with("https://")
+            || self.server_address.starts_with("http://"))
+        {
             *self.output.lock().unwrap() = "Error! Missing `https://` or `http://`".to_string();
             return;
         }
@@ -112,9 +114,7 @@ impl LoginWidget {
             let auth_res = auth::AuthState::login_password(&server, &username, &password).await;
 
             let message: Result<AuthState, String> = match auth_res {
-                Ok(auth) => {
-                    Ok(auth)
-                },
+                Ok(auth) => Ok(auth),
                 Err(e) => {
                     if let Some(e) = e.downcast_ref::<reqwest::Error>() {
                         if e.is_builder() {
@@ -125,7 +125,9 @@ impl LoginWidget {
                     } else if let Some(e) = e.downcast_ref::<MatrixError>() {
                         match e {
                             MatrixError::MatrixError(_, Some(msg)) => Err(msg.clone()),
-                            MatrixError::MatrixError(code, None) => Err(format!("Error! Server returned: {}", code)),
+                            MatrixError::MatrixError(code, None) => {
+                                Err(format!("Error! Server returned: {}", code))
+                            }
                         }
                     } else {
                         Err("Error! Unknown error".to_string())
@@ -185,7 +187,6 @@ impl Widget for LoginWidget {
         let text = self.output.lock().unwrap().clone();
 
         OutputWidget::new(text).render(output, buf);
-
     }
 }
 
@@ -278,7 +279,6 @@ impl Widget for TextBoxWidget {
     }
 }
 
-
 struct OutputWidget {
     text: String,
 }
@@ -296,4 +296,3 @@ impl Widget for OutputWidget {
             .render(area, buf);
     }
 }
-
