@@ -15,7 +15,7 @@ pub struct ClientState {
 
 #[derive(Debug, Default, Clone)]
 pub struct Cache {
-    events: Vec<Event>,
+    pub events: Vec<Event>,
     before_token: String,
     roomid: String,
     total_history: Option<bool>,

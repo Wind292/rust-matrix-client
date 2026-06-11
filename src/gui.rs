@@ -1,6 +1,7 @@
 mod login;
 mod messages;
 mod sidebar;
+pub mod history;
 
 use std::io;
 use crossterm::event::{self, Event, KeyEventKind};

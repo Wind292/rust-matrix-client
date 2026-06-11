@@ -110,7 +110,8 @@ impl Widget for MessagesWidget {
             .unwrap_or_default();
 
         SidebarWidget::new(list_rooms, self.sidebar_selection).render(sidebar, buf);
-
+        
+        let history = &History::from(self.messages_cache);
         History::render(history, );
     }
 }
