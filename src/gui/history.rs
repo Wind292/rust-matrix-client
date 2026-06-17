@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, text::{Line, Span}, widgets::Widget};
 use tokio::sync::Mutex;
 
 use crate::content::{Cache, Event, UnknownEvent};
@@ -28,16 +28,66 @@ impl History {
         }
     }
 
-    pub async fn from_cache(cache: Arc<Mutex<Cache>>, start: usize, length: usize) {
-        let mut c = cache.lock().await;
+    pub fn try_from_cache(cache: Arc<Mutex<Option<Cache>>>, start: usize, length: usize) -> Option<Self> {
+        let c = cache.try_lock();
   
+        if c.is_err() {
+            return None
+        }
+
+        let temp = c.unwrap();
+        let c = temp.as_ref();
+        
+        if c.is_none() { 
+            return None
+        }
+        let c = c.unwrap();
+
         let slice: Vec<&Event> = c.events[start..length+start].iter().clone().collect();
+        let mut history_rows: Vec<HistoryRow> = vec![];
+
+        for e in slice.iter().rev() {
+            let row = HistoryRow::from_event(e.clone().clone());
+            history_rows.extend(row);
+        }
+
+        Some( Self {
+            messages: history_rows
+        })
+
     }
 }
 
 #[derive(Clone)]
-pub struct HistoryRow {}
+pub struct HistoryRow {
+    content: Line<'static>
+}
 
 impl Widget for HistoryRow {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {}
+}
+
+impl HistoryRow {
+    pub fn new(content: Line<'static>) -> Self {
+        HistoryRow { content }
+    }
+
+    pub fn from_event(event: Event) -> Vec<HistoryRow> {
+        match event {
+            Event::Message(message_event) => {
+                let sender =  message_event.sender.unwrap_or("Unknown".to_string());
+                let body =  message_event.body;
+                vec![HistoryRow::new(Line::from(format!("{}: {}", sender, body)))]
+            },
+            Event::Name(name_event) => {
+                let sender =  name_event.sender.unwrap_or("Unknown".to_string());
+                let name = name_event.name;
+                vec![HistoryRow::new(Line::from(format!("{} renamed the room to {}", sender, name)))]
+            },
+            Event::Unknown(unknown_event) => {
+                let event_type =  unknown_event.event_type;
+                vec![HistoryRow::new(Line::from(format!("Unknown Event of {}", event_type)))]
+            },
+        }
+    }
 }

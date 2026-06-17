@@ -32,9 +32,10 @@ pub struct MessagesWidget {
     sidebar_selection: Option<usize>, // the room the sidebar is hovering over
     current_room: Option<String>,     // the room in which the messages are being displayed are from
     sidebar_width: u16,
-    //           name    subtext  roomid
+    //                     name    subtext  roomid
     rooms: Arc<Mutex<Vec<((String, String), String)>>>,
     messages_cache: Arc<Mutex<Option<Cache>>>,
+    scroll: usize,
     pub exit: bool,
 }
 
@@ -50,11 +51,12 @@ impl MessagesWidget {
             exit: false,
             auth,
             error: error_mutex,
-            sidebar_width: 20,
+            sidebar_width: 50,
             sidebar_selection: None,
             messages_cache: cache_mutex.clone(),
             current_room: None,
             rooms: rooms_mutex,
+            scroll: 0,
         }
     }
     pub async fn handle_events(&mut self, key_event: KeyEvent) -> io::Result<()> {
@@ -111,8 +113,13 @@ impl Widget for MessagesWidget {
 
         SidebarWidget::new(list_rooms, self.sidebar_selection).render(sidebar, buf);
         
-        let history = &History::from(self.messages_cache);
-        History::render(history, );
+        let history = &History::try_from_cache(self.messages_cache, self.scroll, area.height.into());
+        match history {
+            Some(h) => {h.render(messaging, buf);},
+            None => {
+
+            },
+        }
     }
 }
 

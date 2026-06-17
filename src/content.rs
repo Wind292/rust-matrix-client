@@ -142,7 +142,6 @@ impl Cache {
                 roomid: roomid.to_string(),
                 total_history: total_history,
             };
-
             caches.insert(roomid.to_string(), (state_cache, timeline_cache));
         }
 
@@ -159,7 +158,7 @@ impl Cache {
 
 }
 
-fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
+pub fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
     let event_type = event_json
         .get("type")
         .and_then(|f| f.as_str())
@@ -177,6 +176,17 @@ pub enum Event {
     Message(MessageEvent),
     Name(NameEvent),
     Unknown(UnknownEvent),
+}
+
+impl Event {
+    pub fn summary(&self) -> String {
+        match self {
+            Event::Message(message_event) => message_event.summary(),
+            Event::Name(name_event) => name_event.summary(),
+            Event::Unknown(unknown_event) => unknown_event.summary(),
+        }
+    }
+
 }
 
 impl Default for Event { 
@@ -242,6 +252,11 @@ impl MessageEvent {
         })
     }
 
+    fn summary(&self) -> String{
+        // let sender_prefix = self.sender.clone().and_then(|s| Some(format!("{}: ", s))).unwrap_or("".to_string());
+        format!("{}", self.body.to_string())
+    }
+ 
     fn display(&self) -> bool {
         true
     }
@@ -281,6 +296,10 @@ impl NameEvent {
         })
     }
 
+    fn summary(&self) -> String{
+        format!("{}", self.name.to_string())
+    }
+
     fn display(&self) -> bool {
         true
     }
@@ -316,6 +335,10 @@ impl UnknownEvent {
             event_id: event_id,
             time: time,
         })
+    }
+
+    fn summary(&self) -> String{
+        format!("{}", self.event_type.to_string())
     }
 
     fn display(&self) -> bool {

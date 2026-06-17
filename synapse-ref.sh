@@ -10,6 +10,3 @@ docker run -d \
   -p 8448:8448 \
   -p 8008:8008 \
   matrixdotorg/synapse:latest
-
-docker exec -it synapse register_new_matrix_user \
-  -c /data/homeserver.yaml http://localhost:8008

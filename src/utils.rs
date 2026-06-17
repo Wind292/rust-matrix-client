@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::{content::Cache, events::{EventState, get_rooms}};
+use crate::{content::{self, Cache}, events::{EventState, get_rooms}};
 
 pub async fn unauth_get(
     server_address: &str,
@@ -66,17 +66,32 @@ pub fn async_sync(mutex: Arc<Mutex<Vec<((String, String), String)>>>, error: Arc
         if rooms_value.is_none() { error_clone.lock().await.push("Invalid room data sent from server".to_string()) }
 
         for (roomid, value) in rooms_value.unwrap() {
-            let state = value.get("state");
-            let timeline = value.get("timeline");
+            let Some(state) = value.get("state").and_then(|f| f.get("events")).and_then(|f| f.as_array()) else {
+                error_clone.lock().await.push("Invalid room data sent from server".to_string());
+                continue;
+            };
+            let Some(timeline) = value.get("timeline").and_then(|f| f.get("events")).and_then(|f| f.as_array()) else {
+                error_clone.lock().await.push("Invalid room data sent from server".to_string());
+                continue;
+            };
 
-            if state.is_none() || timeline.is_none() { error_clone.lock().await.push("Invalid room data sent from server".to_string()) }
+            let latest_event = timeline.iter().last();
+            let event = content::parse_event(latest_event.unwrap_or_default().clone()).unwrap_or_default();
+            let subtext = event.summary();
 
-            // Name, subtext, id
+            let mut room_name = roomid.clone();
+            for e in state { 
+                match e.get("type").and_then(|f| f.as_str()).unwrap_or("") {
+                    "m.room.name" => {
+                        room_name = e.get("content").unwrap_or_default().get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    }
 
-
+                    _=> {} // other event
+                }
+            }
+         
+            rooms_mutex.push(((room_name, subtext), roomid));
         }
-
-        
     });
 }
 
