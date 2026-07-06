@@ -13,12 +13,13 @@ const ROOMS_START_OFFSET: u16 = 2;
 
 pub struct SidebarWidget {
     rooms: Vec<((String, String), String)>,
+    current_room: Option<String>,
     selected: Option<usize>,
 }
 
 impl SidebarWidget {
-    pub fn new(rooms: Vec<((String, String), String)>, selected: Option<usize>) -> Self {
-        Self { rooms, selected }
+    pub fn new(rooms: Vec<((String, String), String)>, selected: Option<usize>, current_room: Option<String>) -> Self {
+        Self { rooms, selected, current_room}
     }
 }
 
@@ -80,12 +81,24 @@ impl Widget for SidebarWidget {
                 break;
             }
 
+            let is_current_room = self.current_room.clone().unwrap_or_default() == room_id;
             let is_selected = self.selected == Some(i);
-            let name_style = if is_selected {
+            let name_style = if is_selected && is_current_room  {
                 Style::default()
                     .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD)
-            } else {
+                    .bg(Color::Gray)
+            }
+             else if is_selected {
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_current_room {
+                Style::default()
+                    .bg(Color::Gray)
+                    .add_modifier(Modifier::BOLD)
+            } 
+            else {
                 Style::default().fg(Color::White)
             };
 

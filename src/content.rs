@@ -1,12 +1,16 @@
-use core::{fmt, time};
+use core::{error, fmt, time};
 use std::collections::HashMap;
 use std::mem::transmute;
 use std::os::unix::process::parent_id;
+use serde::de::value;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 use crate::errors::CustomError::*;
 use crate::events::{EventState, Message, get_messages};
 use serde_json::Value;
+use serde::Deserialize;
+use crate::errors::BoxError;
+
 pub struct ClientState {
     rooms: HashMap<String, (Cache, Cache)>,
     next_token: String,
@@ -21,11 +25,52 @@ pub struct Cache {
     total_history: Option<bool>,
 }
 
+
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Rooms {
+    #[serde(default)]
+    pub join: HashMap<String, Room>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Room {
+    #[serde(default)]
+    pub state: State,
+    #[serde(default)]
+    pub timeline: Timeline,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct StateEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(default)]
+    pub content: Value,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct Timeline {
+    pub events: Vec<Value>,
+    pub prev_batch: String,
+    #[serde(default)]
+    pub limited: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct State {
+    pub events: Vec<Value>,
+    #[serde(default)]
+    pub limited: Option<bool>,
+}
+
+
+
 impl Cache {
     pub async fn update_before(
         &mut self,
         auth_state: crate::auth::AuthState,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), BoxError> {
         let mut response = get_messages(
             auth_state,
             self.roomid.clone(),
@@ -77,72 +122,42 @@ impl Cache {
     }
 
     pub async fn from_rooms(
-        rooms: Value,
-    ) -> Result<HashMap<String, (Self, Self)>, Box<dyn std::error::Error>> {
-        // Rooms should be something like:
-        // {
-        //   roomid: {
-        //     state: { events: [] },
-        //     timeline: { events: [] }
-        //   }
-        // }
-        //
+        rooms: Rooms,
+    ) -> Result<HashMap<String, (Self, Self)>, BoxError> {
         let mut caches: HashMap<String, (Self, Self)> = HashMap::new();
 
-        for room in rooms.as_object().ok_or(MissingRequiredField)? {
-            let roomid = room.0;
-            let room = room.1;
+        for (roomid, room) in rooms.join {
+            let state_events: Vec<Event> = room
+                .state
+                .events
+                .into_iter()
+                .rev()
+                .map(parse_event)
+                .collect::<Result<_, _>>()?;
 
-            let mut state_events: Vec<Event> = Vec::new();
-            let mut timeline_events: Vec<Event> = Vec::new();
+            let timeline_events: Vec<Event> = room
+                .timeline
+                .events
+                .into_iter()
+                .rev()
+                .map(parse_event)
+                .collect::<Result<_, _>>()?;
 
-            let state: &Vec<Value> = room
-                .get("state")
-                .and_then(|f| f.get("events"))
-                .and_then(|f| f.as_array())
-                .ok_or(MissingRequiredField)?;
-            let timeline: &Vec<Value> = room
-                .get("timeline")
-                .and_then(|f| f.get("events"))
-                .and_then(|f| f.as_array())
-                .ok_or(MissingRequiredField)?;
-
-            // Populate the event lists
-            for state_event in state.iter().rev() {
-                state_events.push(parse_event(state_event.to_owned())?);
-            }
-            for timeline_event in timeline.iter().rev() {
-                timeline_events.push(parse_event(timeline_event.to_owned())?);
-            }
-
-            // This room's caches
             let state_cache = Cache {
-                // First is State
                 events: state_events,
-                before_token: "".to_string(), // can leave blank for state
-                roomid: roomid.to_string(),
+                before_token: "".to_string(),
+                roomid: roomid.clone(),
                 total_history: None,
             };
 
-            let before_token = room
-                .get("timeline")
-                .and_then(|f| f.get("prev_batch"))
-                .and_then(|f| f.as_str())
-                .and_then(|f| Some(f.to_string()))
-                .ok_or(MissingRequiredField)?;
-            let total_history = room
-                .get("timeline")
-                .and_then(|f| f.get("limited"))
-                .and_then(|f| f.as_bool())
-                .and_then(|f| Some(!f));
             let timeline_cache = Cache {
-                // Second is timeline
                 events: timeline_events,
-                before_token: before_token,
-                roomid: roomid.to_string(),
-                total_history: total_history,
+                before_token: room.timeline.prev_batch,
+                roomid: roomid.clone(),
+                total_history: room.timeline.limited.map(|limited| !limited),
             };
-            caches.insert(roomid.to_string(), (state_cache, timeline_cache));
+
+            caches.insert(roomid, (state_cache, timeline_cache));
         }
 
         Ok(caches)
@@ -158,7 +173,7 @@ impl Cache {
 
 }
 
-pub fn parse_event(event_json: Value) -> Result<Event, Box<dyn std::error::Error>> {
+pub fn parse_event(event_json: Value) -> Result<Event, BoxError> {
     let event_type = event_json
         .get("type")
         .and_then(|f| f.as_str())
@@ -207,7 +222,7 @@ pub struct MessageEvent {
 }
 
 impl MessageEvent {
-    fn format(json: Value) -> Result<Self, Box<dyn std::error::Error>> {
+    fn format(json: Value) -> Result<Self, BoxError> {
         let content = json.get("content").ok_or(MissingRequiredField)?;
         let msg_type = content
             .get("msgtype")
@@ -271,7 +286,7 @@ pub struct NameEvent {
 }
 
 impl NameEvent {
-    fn format(json: Value) -> Result<Self, Box<dyn std::error::Error>> {
+    fn format(json: Value) -> Result<Self, BoxError> {
         let content = json.get("content").ok_or(MissingRequiredField)?;
         let name = content
             .get("name")
@@ -313,7 +328,7 @@ pub struct UnknownEvent {
 }
 
 impl UnknownEvent {
-    fn format(json: Value) -> Result<Self, Box<dyn std::error::Error>> {
+    fn format(json: Value) -> Result<Self, BoxError> {
         let event_type = json
             .get("type")
             .and_then(|t| t.as_str())

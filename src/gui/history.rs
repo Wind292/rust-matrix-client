@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use ratatui::{buffer::Buffer, layout::Rect, text::{Line, Span}, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, text::{Line, Span}, widgets::{Paragraph, Widget}};
 use tokio::sync::Mutex;
 
 use crate::content::{Cache, Event, UnknownEvent};
@@ -28,19 +28,20 @@ impl History {
         }
     }
 
-    pub fn try_from_cache(cache: Arc<Mutex<Option<Cache>>>, start: usize, length: usize) -> Option<Self> {
+    pub fn try_from_cache(cache: Arc<Mutex<HashMap<String, Cache>>>, roomid: Option<String>, start: usize, length: usize) -> Option<Self> {
         let c = cache.try_lock();
-  
+
         if c.is_err() {
             return None
         }
 
         let temp = c.unwrap();
-        let c = temp.as_ref();
-        
+        let c = temp.get(&roomid.unwrap_or_default());
+
         if c.is_none() { 
             return None
         }
+
         let c = c.unwrap();
 
         let slice: Vec<&Event> = c.events[start..length+start].iter().clone().collect();
@@ -64,7 +65,9 @@ pub struct HistoryRow {
 }
 
 impl Widget for HistoryRow {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {}
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        self.content.render(area, buf);
+    }
 }
 
 impl HistoryRow {

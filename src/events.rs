@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::auth::AuthState;
 use crate::content;
 use crate::{auth, errors, utils::*};
+use crate::errors::BoxError;
 
 #[derive(Debug)]
 pub struct EventState {
@@ -31,7 +32,7 @@ impl EventState {
         &mut self,
         auth_state: AuthState,
         since: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    ) -> Result<(), BoxError> {
         let mut url = "v3/sync".to_string();
 
         if since.is_some() {
@@ -60,7 +61,7 @@ impl EventState {
                 self.rooms = rooms;
             },
             Err(e) => {
-                let e: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
+                let e: BoxError = e.to_string().into();
                 return Err(e)
             },
         }
@@ -69,14 +70,14 @@ impl EventState {
 
     pub fn extract_events(
         events: Vec<Value>,
-    ) -> Result<Vec<content::Event>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<content::Event>, BoxError> {
         todo!()
     }
 }
 
 pub async fn get_rooms(
     auth_state: AuthState,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, BoxError> {
     let response = auth_state.auth_get("v3/joined_rooms").await?;
 
     let rooms: Option<&Vec<Value>> = response.get("joined_rooms").and_then(|t| t.as_array());
@@ -104,7 +105,7 @@ pub async fn leave_room(
     auth_state: AuthState,
     roomid: String,
     reason: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let body = &json!({
         "reason": reason,
     })
@@ -121,7 +122,7 @@ pub async fn forget_room(
     auth_state: AuthState,
     roomid: String,
     reason: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let body = &json!({
         "reason": reason,
     })
@@ -137,7 +138,7 @@ pub async fn forget_room(
 pub async fn room_summary(
     auth_state: AuthState,
     roomid: String,
-) -> Result<Room, Box<dyn std::error::Error>> {
+) -> Result<Room, BoxError> {
     let response = auth_state
         .auth_get(&format!("v1/room_summary/{}", roomid))
         .await?;
@@ -196,7 +197,7 @@ pub async fn send_message(
     auth_state: &mut AuthState,
     roomid: String,
     message: Message,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let mut content = json!({
         "body": message.body,
         "msgtype": "m.text",
@@ -229,7 +230,7 @@ pub async fn send_event(
     roomid: String,
     event_type: String,
     body: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let transaction_id = Uuid::new_v4().simple().to_string();
 
     auth_state
@@ -249,7 +250,7 @@ pub async fn get_messages(
     dir: &str,
     limit: u64,
     from: Option<String>,
-) -> Result<Value, Box<dyn std::error::Error>> {
+) -> Result<Value, BoxError> {
     let mut url = format!(
         "v3/rooms/{}/messages?dir={}&limit={}",
         roomid,
@@ -267,7 +268,7 @@ pub async fn get_messages(
     Ok(response)
 }
 
-// pub async fn get_events(auth_state: &mut AuthState, roomid: String, ) -> Result<(), Box<dyn std::error::Error>> {
+// pub async fn get_events(auth_state: &mut AuthState, roomid: String, ) -> Result<(), BoxError> {
 //     auth_state.auth_get(format!("v3/rooms/{}/event/{}", roomid, ));
 
 //     Ok(())
@@ -280,7 +281,7 @@ pub async fn create_room(
     name: &str,
     invites: Vec<&str>,
     preset: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), BoxError> {
     let body = json!({
         // "creation_content": {
         //     "m.federate": false

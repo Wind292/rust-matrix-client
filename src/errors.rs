@@ -1,6 +1,8 @@
 use serde_json::Value;
 use thiserror::Error;
 
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
 #[derive(Debug, Error)]
 pub enum CustomError {
     #[error("invalid json")]

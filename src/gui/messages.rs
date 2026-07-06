@@ -14,12 +14,14 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Paragraph},
 };
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::auth::AuthState;
 use crate::content::Cache;
+use crate::errors::BoxError;
 use crate::gui::AppState;
 use crate::gui::history::History;
 use crate::gui::sidebar::SidebarWidget;
@@ -34,18 +36,19 @@ pub struct MessagesWidget {
     sidebar_width: u16,
     //                     name    subtext  roomid
     rooms: Arc<Mutex<Vec<((String, String), String)>>>,
-    messages_cache: Arc<Mutex<Option<Cache>>>,
+    room_caches: Arc<Mutex<HashMap<String, Cache>>>,
     scroll: usize,
     pub exit: bool,
 }
 
 impl MessagesWidget {
     pub fn new(auth: AuthState) -> Self {
-        let cache_mutex: Arc<Mutex<Option<Cache>>> = Arc::new(Mutex::new(None));
+        let room_caches_mutex: Arc<Mutex<HashMap<String, Cache>>> = Arc::new(Mutex::new(HashMap::new()));
         let error_mutex: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
         let rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>> = Arc::new(Mutex::new(vec![]));
+        let cache_mutex: Arc<Mutex<HashMap<String, Cache>>> = Arc::new(Mutex::new(HashMap::new()));
 
-        utils::async_sync(rooms_mutex.clone(), error_mutex.clone(), auth.clone());
+        utils::async_sync(rooms_mutex.clone(), cache_mutex.clone(), error_mutex.clone(), auth.clone());
 
         Self {
             exit: false,
@@ -53,7 +56,7 @@ impl MessagesWidget {
             error: error_mutex,
             sidebar_width: 50,
             sidebar_selection: None,
-            messages_cache: cache_mutex.clone(),
+            room_caches: room_caches_mutex.clone(),
             current_room: None,
             rooms: rooms_mutex,
             scroll: 0,
@@ -67,8 +70,9 @@ impl MessagesWidget {
     async fn handle_key_event(&mut self, key_event: KeyEvent) -> AppState {
         match key_event.code {
             KeyCode::Esc => self.exit = true,
-            KeyCode::Up => self.sidebar_increment(-1),
-            KeyCode::Down => self.sidebar_increment(1),
+            KeyCode::Up => self.sidebar_increment(-1).await,
+            KeyCode::Down => self.sidebar_increment(1).await,
+            KeyCode::Enter => self.sidebar_select().await,
             KeyCode::PageUp => {
                 self.write_auth().await;
             }
@@ -77,16 +81,35 @@ impl MessagesWidget {
         AppState::Messaging(self.clone())
     }
 
-    pub async fn write_auth(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn write_auth(&self) -> Result<(), BoxError> {
         self.auth.save_to_disk().await;
         Ok(())
     }
 
-    fn sidebar_increment(&mut self, amount: i32) {
+    async fn sidebar_increment(&mut self, amount: i32) {
         if self.sidebar_selection.is_none() {
+            self.sidebar_selection = Some(0);
+            return;
+        }
+        let room_count = self.rooms.lock().await.len();
+        
+        if self.sidebar_selection == Some(0) && amount == -1 {
+            self.sidebar_selection = Some(room_count-1);
+            return ;
+        }
+
+        self.sidebar_selection = Some((self.sidebar_selection.unwrap() as i32 + amount) as usize);
+        
+        if self.sidebar_selection.unwrap_or_default() >= room_count {
             self.sidebar_selection = Some(0)
         }
-        self.sidebar_selection = Some((self.sidebar_selection.unwrap() as i32 + amount) as usize);
+    }
+    
+    async fn sidebar_select(&mut self) {
+        let rooms = self.rooms.lock().await;
+        let current_room = rooms.get(self.sidebar_selection.unwrap_or(0));
+
+        self.current_room = Some(current_room.unwrap_or(&(("".to_string(), "".to_string()), "".to_string())).to_owned().1);
     }
 }
 
@@ -99,7 +122,7 @@ impl Widget for MessagesWidget {
             Layout::horizontal([Constraint::Length(self.sidebar_width), Constraint::Fill(1)])
                 .areas(otherthanbar);
 
-        let [title, history, chatbox] =
+        let [title_rect, history_rect, chatbox_rect] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1), Constraint::Length(3)]).areas(messaging);
 
         HeaderWidget::new(vec![("<esc>".to_string(), "quit".to_string())]).render(topbar, buf);
@@ -111,14 +134,12 @@ impl Widget for MessagesWidget {
             .cloned()
             .unwrap_or_default();
 
-        SidebarWidget::new(list_rooms, self.sidebar_selection).render(sidebar, buf);
+        SidebarWidget::new(list_rooms, self.sidebar_selection, self.current_room.clone()).render(sidebar, buf);
         
-        let history = &History::try_from_cache(self.messages_cache, self.scroll, area.height.into());
-        match history {
-            Some(h) => {h.render(messaging, buf);},
-            None => {
-
-            },
+        let history = &History::try_from_cache(self.room_caches, self.current_room, self.scroll, area.height.into());
+        match history { 
+            Some(h) => {h.render(history_rect, buf);},
+            None => {},
         }
     }
 }

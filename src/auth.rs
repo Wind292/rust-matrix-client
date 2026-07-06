@@ -5,9 +5,11 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::errors;
+use crate::errors::BoxError;
 use crate::errors::CustomError;
 use crate::utils::unauth_get;
 use crate::utils::unauth_post;
+
 
 #[derive(Debug, Default, Clone)]
 pub struct AuthState {
@@ -24,7 +26,7 @@ impl AuthState {
         server_address: &str,
         username: &str,
         password: &str,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, BoxError> {
         let resp = unauth_get(server_address, "v3/login").await?;
         let supported_auths = resp.get("flows").unwrap_or_default().as_array();
 
@@ -111,7 +113,7 @@ impl AuthState {
         Ok(client)
     }
 
-    pub async fn auth_get(self, path: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn auth_get(self, path: &str) -> Result<Value, BoxError> {
         let client = reqwest::Client::new();
 
         let resp = client
@@ -133,7 +135,7 @@ impl AuthState {
         self,
         path: &str,
         body: &str,
-    ) -> Result<Value, Box<dyn std::error::Error>> {
+    ) -> Result<Value, BoxError> {
         let client = reqwest::Client::new();
 
         let resp = client
@@ -156,7 +158,7 @@ impl AuthState {
         &mut self,
         path: &str,
         body: &str,
-    ) -> Result<Value, Box<dyn std::error::Error>> {
+    ) -> Result<Value, BoxError> {
         let client = reqwest::Client::new();
 
         let resp = client
@@ -239,7 +241,7 @@ impl AuthState {
     }
 }
 
-pub async fn get_oauth2_support(server_address: &str) -> Result<bool, Box<dyn std::error::Error>> {
+pub async fn get_oauth2_support(server_address: &str) -> Result<bool, BoxError> {
     let response =
         reqwest::get(server_address.to_string() + "/_matrix/client/v1/auth_metadata").await?;
     let response_code = response.status().as_u16();
