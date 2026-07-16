@@ -11,7 +11,6 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-
     let mut terminal = ratatui::init();
     let result = gui::App::default().run(&mut terminal).await;
     ratatui::restore();

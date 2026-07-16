@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Layout};
 use ratatui::macros::vertical;
 use ratatui::style::{Color, Style};
@@ -47,6 +47,13 @@ impl MessagesWidget {
         let rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>> = Arc::new(Mutex::new(vec![]));
         let cache_mutex: Arc<Mutex<HashMap<String, CacheRoom>>> = Arc::new(Mutex::new(HashMap::new()));
 
+        // Save auth to disk
+        let auth_clone = auth.clone();
+        tokio::spawn(async move {
+            auth_clone.save_to_disk().await.unwrap();
+        });
+
+        // Send async thread to start intial sync 
         utils::async_sync(rooms_mutex.clone(), cache_mutex.clone(), error_mutex.clone(), auth.clone());
 
         Self {
@@ -68,13 +75,17 @@ impl MessagesWidget {
 
     async fn handle_key_event(&mut self, key_event: KeyEvent) -> AppState {
         match key_event.code {
+            KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                utils::logout();
+                self.exit = true;
+
+            }
+
             KeyCode::Esc => self.exit = true,
             KeyCode::Up => self.sidebar_increment(-1).await,
             KeyCode::Down => self.sidebar_increment(1).await,
             KeyCode::Enter => self.sidebar_select().await,
-            KeyCode::PageUp => {
-                self.write_auth().await;
-            }
+            
             _ => {}
         };
         AppState::Messaging(self.clone())
@@ -124,7 +135,10 @@ impl Widget for MessagesWidget {
         let [title_rect, history_rect, chatbox_rect] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1), Constraint::Length(3)]).areas(messaging);
 
-        HeaderWidget::new(vec![("<esc>".to_string(), "quit".to_string())]).render(topbar, buf);
+        HeaderWidget::new(vec![
+            ("<esc>".to_string(), "quit".to_string()),
+            ("<ctrl + L>".to_string(), "logout".to_string())
+        ]).render(topbar, buf);
 
         let list_rooms: Vec<((String, String), String)> = self
             .rooms

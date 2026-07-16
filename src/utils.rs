@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use tokio::sync::Mutex;
 
-use crate::{content::{self, Cache, CacheRoom}, errors::CustomError::MissingRequiredField, events::{EventState, get_rooms}};
+use crate::{auth::{self, AuthState}, content::{self, Cache, CacheRoom}, errors::CustomError::MissingRequiredField, events::{EventState, get_rooms}};
 use crate::errors::BoxError;
 
 
@@ -150,4 +150,8 @@ pub fn async_fetch_room_events(cache_mutex: Arc<Mutex<Option<Cache>>>, roomid: S
     });
 }
 
-
+pub fn logout() {
+    tokio::spawn(async move {
+        AuthState::delete_from_disk().await.unwrap();
+    });
+}
