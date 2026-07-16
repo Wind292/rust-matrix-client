@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use tokio::sync::Mutex;
 
-use crate::{content::{self, Cache}, errors::CustomError::MissingRequiredField, events::{EventState, get_rooms}};
+use crate::{content::{self, Cache, CacheRoom}, errors::CustomError::MissingRequiredField, events::{EventState, get_rooms}};
 use crate::errors::BoxError;
 
 
@@ -44,7 +44,7 @@ pub fn async_load_room(mutex: Arc<Mutex<Cache>>, auth_state: crate::auth::AuthSt
     });
 }
 
-pub fn async_sync(rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>>, cache_mutex: Arc<Mutex<HashMap<String, Cache>>>, error: Arc<Mutex<Vec<String>>>, auth_state: crate::auth::AuthState) {
+pub fn async_sync(rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>>, cache_mutex: Arc<Mutex<HashMap<String, CacheRoom>>>, error: Arc<Mutex<Vec<String>>>, auth_state: crate::auth::AuthState) {
     let cache_clone = cache_mutex.clone();
     let rooms_clone = rooms_mutex.clone();
     let error_clone = error.clone();
@@ -104,20 +104,19 @@ pub fn async_sync(rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>>, cach
             rooms_mutex.push(((room_name, subtext), roomid.to_string()));
         }
 
-
-        let caches  = Cache::from_rooms(rooms_value).await;
         
-        match caches {
-            Ok(_) => {},
+        let cache_rooms  = Cache::from_rooms(rooms_value).await;
+        
+        match cache_rooms {
+            Ok(cache_rooms_map) => {
+                *caches = cache_rooms_map;
+            },
             Err(_) => {
                 // error.clone().lock().await.push("".to_string());
             },
         }
 
 
-        for cache in caches {
-
-        }
 
 
     });

@@ -64,6 +64,11 @@ pub struct State {
     pub limited: Option<bool>,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct CacheRoom {
+    pub state: Cache,
+    pub timeline: Cache,
+}
 
 
 impl Cache {
@@ -117,14 +122,17 @@ impl Cache {
                 Event::Unknown(e) => {
                     println!("Unknown of type: {}", e.event_type)
                 }
+                Event::Creation(e) => {
+                    println!("Room Created by {:?}", e.creators)
+                }
             }
         }
     }
 
     pub async fn from_rooms(
         rooms: Rooms,
-    ) -> Result<HashMap<String, (Self, Self)>, BoxError> {
-        let mut caches: HashMap<String, (Self, Self)> = HashMap::new();
+    ) -> Result<HashMap<String, CacheRoom>, BoxError> {
+        let mut caches: HashMap<String, CacheRoom> = HashMap::new();
 
         for (roomid, room) in rooms.join {
             let state_events: Vec<Event> = room
@@ -157,7 +165,7 @@ impl Cache {
                 total_history: room.timeline.limited.map(|limited| !limited),
             };
 
-            caches.insert(roomid, (state_cache, timeline_cache));
+            caches.insert(roomid, CacheRoom{ state: state_cache, timeline: timeline_cache });
         }
 
         Ok(caches)
@@ -181,6 +189,7 @@ pub fn parse_event(event_json: Value) -> Result<Event, BoxError> {
     Ok(match event_type {
         "m.room.message" => Event::Message(MessageEvent::format(event_json.clone())?),
         "m.room.name" => Event::Name(NameEvent::format(event_json.clone())?),
+        "m.room.create" => Event::Creation(CreationEvent::format(event_json.clone())?),
         _ => Event::Unknown(UnknownEvent::format(event_json.clone())?), // unsupported type
     })
 }
@@ -191,6 +200,7 @@ pub enum Event {
     Message(MessageEvent),
     Name(NameEvent),
     Unknown(UnknownEvent),
+    Creation(CreationEvent)
 }
 
 impl Event {
@@ -199,6 +209,7 @@ impl Event {
             Event::Message(message_event) => message_event.summary(),
             Event::Name(name_event) => name_event.summary(),
             Event::Unknown(unknown_event) => unknown_event.summary(),
+            Event::Creation(creation_event) => creation_event.summary(),
         }
     }
 
@@ -319,6 +330,7 @@ impl NameEvent {
         true
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct UnknownEvent {
     pub event_type: String,
@@ -367,5 +379,146 @@ impl Default for UnknownEvent {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CreationEvent {
+    pub event_type: String,
+    pub creators: Vec<String>,
+    pub is_federated: Option<bool>,
+    pub event_id: Option<String>,
+    pub time: Option<u64>,
+    pub room_version: Option<u32>,
+    pub formatted: Option<String>
+}
 
+impl CreationEvent {
+    fn format(json: Value) -> Result<Self, BoxError> {
+        let event_type = json
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or(MissingRequiredField)?
+            .to_string();
+
+        let sender = json
+            .get("sender")
+            .and_then(|s| s.as_str())
+            .ok_or(MissingRequiredField)?
+            .to_string();
+
+        let event_id = json
+            .get("event_id")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string());
+
+        let time = json.get("origin_server_ts").and_then(|t| t.as_u64());
+
+        let content = json.get("content");
+
+        let room_version: Option<u32> = content
+            .and_then(|c| c.get("room_version"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u32>().ok())
+            .or(Some(1));
+
+        let is_federated = content
+            .and_then(|c| c.get("m.federate"))
+            .and_then(|v| v.as_bool())
+            .or(Some(true));
+
+        // Figure out creator depending on room version:
+        // - v1-10: use content.creator (fall back to sender if missing)
+        // - v11+: sender is the (sole) creator
+        // - v12+: sender plus content.additional_creators
+        let mut creators: Vec<String> = Vec::new();
+        let is_pre_v11 = matches!(room_version, Some(v) if v < 11);
+
+        if is_pre_v11 {
+            let creator = content
+                .and_then(|c| c.get("creator"))
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| sender.clone());
+            creators.push(creator);
+        } else {
+            creators.push(sender.clone());
+
+            if matches!(room_version, Some(v) if v >= 12) {
+                if let Some(additional) = content
+                    .and_then(|c| c.get("additional_creators"))
+                    .and_then(|a| a.as_array())
+                {
+                    for uid in additional {
+                        if let Some(uid_str) = uid.as_str() {
+                            creators.push(uid_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let creators_string = creators.join(", ");
+
+        let formatted = Some(format!("Room created by {}", creators_string ));
+
+        Ok(CreationEvent {
+            event_type,
+            creators,
+            is_federated,
+            event_id,
+            time,
+            room_version,
+            formatted,
+        })
+    }
+
+    fn summary(&self) -> String{
+        "Empty Room".to_string()
+    }
+
+    fn display(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MemberEvent {
+    pub name: String,
+    pub sender: Option<String>,
+    pub event_id: Option<String>,
+    pub time: Option<u64>,
+}
+
+impl MemberEvent {
+    fn format(json: Value) -> Result<Self, BoxError> {
+        let content = json.get("content").ok_or(MissingRequiredField)?;
+        let name = content
+            .get("name")
+            .and_then(|t| t.as_str())
+            .ok_or(MissingRequiredField)?;
+
+        let sender = json
+            .get("sender")
+            .and_then(|t| t.as_str())
+            .and_then(|s| Some(s.to_string()));
+        let event_id = json
+            .get("event_id")
+            .and_then(|t| t.as_str())
+            .and_then(|s| Some(s.to_string()));
+        let time = json.get("origin_server_ts").and_then(|t| t.as_u64());
+
+        Ok(MemberEvent {
+            name: name.to_string(),
+            sender: sender,
+            event_id: event_id,
+            time: time,
+        })
+    }
+
+    fn summary(&self) -> String{
+        format!("{}", self.name.to_string())
+    }
+
+    fn display(&self) -> bool {
+        true
+    }
+}
 

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::auth::AuthState;
-use crate::content::Cache;
+use crate::content::{Cache, CacheRoom};
 use crate::errors::BoxError;
 use crate::gui::AppState;
 use crate::gui::history::History;
@@ -36,17 +36,16 @@ pub struct MessagesWidget {
     sidebar_width: u16,
     //                     name    subtext  roomid
     rooms: Arc<Mutex<Vec<((String, String), String)>>>,
-    room_caches: Arc<Mutex<HashMap<String, Cache>>>,
+    room_caches: Arc<Mutex<HashMap<String, CacheRoom>>>,
     scroll: usize,
     pub exit: bool,
 }
 
 impl MessagesWidget {
     pub fn new(auth: AuthState) -> Self {
-        let room_caches_mutex: Arc<Mutex<HashMap<String, Cache>>> = Arc::new(Mutex::new(HashMap::new()));
         let error_mutex: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
         let rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>> = Arc::new(Mutex::new(vec![]));
-        let cache_mutex: Arc<Mutex<HashMap<String, Cache>>> = Arc::new(Mutex::new(HashMap::new()));
+        let cache_mutex: Arc<Mutex<HashMap<String, CacheRoom>>> = Arc::new(Mutex::new(HashMap::new()));
 
         utils::async_sync(rooms_mutex.clone(), cache_mutex.clone(), error_mutex.clone(), auth.clone());
 
@@ -56,7 +55,7 @@ impl MessagesWidget {
             error: error_mutex,
             sidebar_width: 50,
             sidebar_selection: None,
-            room_caches: room_caches_mutex.clone(),
+            room_caches: cache_mutex,
             current_room: None,
             rooms: rooms_mutex,
             scroll: 0,
