@@ -6,7 +6,7 @@ use crate::content;
 use crate::{auth, errors, utils::*};
 use crate::errors::BoxError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventState {
     pub account_data: Option<Value>,
     pub device_one_time_keys_count: Option<Value>,
@@ -66,12 +66,6 @@ impl EventState {
             },
         }
         Ok(())
-    }
-
-    pub fn extract_events(
-        events: Vec<Value>,
-    ) -> Result<Vec<content::Event>, BoxError> {
-        todo!()
     }
 }
 
@@ -286,6 +280,7 @@ pub async fn create_room(
         // "creation_content": {
         //     "m.federate": false
         // },
+        // can be private_chat, trusted_private_chat, or public_chat
         "preset": preset,
         "name": name,
         "invite": invites,

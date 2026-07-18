@@ -1,10 +1,9 @@
-use std::io;
+use std::{io, vec};
 use std::sync::{Arc, Mutex};
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Alignment, Constraint, Layout};
 use ratatui::style::{Color, Style};
-use ratatui::text::Span;
 use ratatui::widgets::BorderType;
 use ratatui::widgets::Widget;
 use ratatui::{
@@ -15,6 +14,7 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 
+use crate::gui::messages::HeaderWidget;
 use crate::auth::{self, AuthState};
 use crate::errors::MatrixError;
 use crate::gui::AppState;
@@ -158,11 +158,15 @@ impl Widget for LoginWidget {
         ])
         .areas(area);
 
-        HeaderWidget::new().render(header, buf);
+        HeaderWidget::new(vec![
+            ("<tab>".to_string(), "switch".to_string()),
+            ("<enter>".to_string(), "submit".to_string()),
+            ("<esc>".to_string(), "quit".to_string()),
+        ]).render(header, buf);
 
         TextBoxWidget::new(
             "Homeserver".to_string(),
-            self.server_address,
+            Line::from(self.server_address),
             self.focused_field == LoginFields::ServerAddress,
             false,
         )
@@ -170,7 +174,7 @@ impl Widget for LoginWidget {
 
         TextBoxWidget::new(
             "Username".to_string(),
-            self.username,
+            Line::from(self.username),
             self.focused_field == LoginFields::Username,
             false,
         )
@@ -178,59 +182,26 @@ impl Widget for LoginWidget {
 
         TextBoxWidget::new(
             "Password".to_string(),
-            self.password,
+            Line::from(self.password),
             self.focused_field == LoginFields::Password,
             true,
         )
         .render(password, buf);
 
         let text = self.output.lock().unwrap().clone();
-
         OutputWidget::new(text).render(output, buf);
     }
 }
 
-struct HeaderWidget {}
-
-impl HeaderWidget {
-    fn new() -> Self {
-        Self {}
-    }
-}
-impl Widget for HeaderWidget {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                " <tab> ",
-                Style::default().fg(Color::Black).bg(Color::LightBlue),
-            ),
-            Span::raw(" switch     "),
-            Span::styled(
-                " <enter> ",
-                Style::default().fg(Color::Black).bg(Color::LightBlue),
-            ),
-            Span::raw(" submit     "),
-            Span::styled(
-                " <esc> ",
-                Style::default().fg(Color::Black).bg(Color::LightBlue),
-            ),
-            Span::raw(" quit"),
-        ]))
-        .alignment(Alignment::Center)
-        .block(Block::default().style(Style::default().bg(Color::Blue)))
-        .render(area, buf);
-    }
-}
-
-struct TextBoxWidget {
+pub struct TextBoxWidget {
     title: String,
-    inside: String,
+    inside: Line<'static>,
     selected: bool,
     hide: bool,
 }
 
 impl TextBoxWidget {
-    fn new(title: String, inside: String, selected: bool, hide: bool) -> Self {
+    pub fn new(title: String, inside: Line<'static>, selected: bool, hide: bool) -> Self {
         Self {
             title,
             selected,
@@ -268,10 +239,7 @@ impl Widget for TextBoxWidget {
         // Render content inside
         let mut inside = self.inside;
         if self.hide {
-            inside = "*".repeat(inside.len())
-        }
-        if self.selected {
-            inside.push(CURSOR_CHAR);
+            inside = Line::from("*".repeat(inside.to_string().len()))
         }
         Paragraph::new(inside)
             .alignment(Alignment::Left)
@@ -279,12 +247,12 @@ impl Widget for TextBoxWidget {
     }
 }
 
-struct OutputWidget {
+pub struct OutputWidget {
     text: String,
 }
 
 impl OutputWidget {
-    fn new(text: String) -> Self {
+    pub fn new(text: String) -> Self {
         Self { text }
     }
 }

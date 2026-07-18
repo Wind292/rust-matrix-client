@@ -1,16 +1,11 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Layout};
-use ratatui::macros::vertical;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::Widget;
-use ratatui::widgets::{BorderType, Borders};
 use ratatui::{
-    DefaultTerminal, Frame,
     buffer::Buffer,
     layout::Rect,
-    style::Stylize,
-    symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph},
 };
@@ -23,6 +18,7 @@ use crate::auth::AuthState;
 use crate::content::{Cache, CacheRoom};
 use crate::errors::BoxError;
 use crate::gui::AppState;
+use crate::gui::context_window::{ContextWindow, RoomCreation};
 use crate::gui::history::History;
 use crate::gui::sidebar::SidebarWidget;
 use crate::utils;
@@ -39,13 +35,15 @@ pub struct MessagesWidget {
     room_caches: Arc<Mutex<HashMap<String, CacheRoom>>>,
     scroll: usize,
     pub exit: bool,
+    context_window: Option<Box<dyn ContextWindow>>
+    
 }
 
 impl MessagesWidget {
     pub fn new(auth: AuthState) -> Self {
         let error_mutex: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
         let rooms_mutex: Arc<Mutex<Vec<((String, String), String)>>> = Arc::new(Mutex::new(vec![]));
-        let cache_mutex: Arc<Mutex<HashMap<String, CacheRoom>>> = Arc::new(Mutex::new(HashMap::new()));
+        let cache_mutex: Arc<Mutex<HashMap<String, CacheRoom>>> = Arc::new( Mutex::new(HashMap::new()));
 
         // Save auth to disk
         let auth_clone = auth.clone();
@@ -66,6 +64,7 @@ impl MessagesWidget {
             current_room: None,
             rooms: rooms_mutex,
             scroll: 0,
+            context_window: None
         }
     }
     pub async fn handle_events(&mut self, key_event: KeyEvent) -> io::Result<()> {
@@ -74,13 +73,22 @@ impl MessagesWidget {
     }
 
     async fn handle_key_event(&mut self, key_event: KeyEvent) -> AppState {
+
+        if let Some(cw) = &mut self.context_window {
+            let result = cw.handle_key_events(key_event);
+            if result {
+                self.context_window = None;
+                self.refresh_room_list().await;
+            }
+            return AppState::Messaging(self.clone());
+        }
+        
         match key_event.code {
             KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 utils::logout();
                 self.exit = true;
-
             }
-
+            KeyCode::Char('n') => self.context_window = Some(Box::new(RoomCreation::new(self.auth.clone()))),
             KeyCode::Esc => self.exit = true,
             KeyCode::Up => self.sidebar_increment(-1).await,
             KeyCode::Down => self.sidebar_increment(1).await,
@@ -121,12 +129,30 @@ impl MessagesWidget {
 
         self.current_room = Some(current_room.unwrap_or(&(("".to_string(), "".to_string()), "".to_string())).to_owned().1);
     }
+
+    async fn refresh_room_list(&mut self) {
+        let rooms_mutex = self.rooms.clone();
+        let auth = self.auth.clone();
+        tokio::spawn( async move {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                utils::async_update_rooms(rooms_mutex.clone(), auth.clone());
+            }
+        });
+    }
+
 }
 
 impl Widget for MessagesWidget {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let [otherthanbar, topbar] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
+        
+        if let Some(cw) = &self.context_window {
+            cw.render(area, buf);
+            return;
+        }
+
+        let [bottombar, otherthanbar] =
+            Layout::vertical([ Constraint::Length(1), Constraint::Fill(1)]).areas(area);
 
         let [sidebar, messaging] =
             Layout::horizontal([Constraint::Length(self.sidebar_width), Constraint::Fill(1)])
@@ -137,8 +163,9 @@ impl Widget for MessagesWidget {
 
         HeaderWidget::new(vec![
             ("<esc>".to_string(), "quit".to_string()),
-            ("<ctrl + L>".to_string(), "logout".to_string())
-        ]).render(topbar, buf);
+            ("<ctrl + l>".to_string(), "logout".to_string()),
+            ("<n>".to_string(), "create a room".to_string())
+        ]).render(bottombar, buf);
 
         let list_rooms: Vec<((String, String), String)> = self
             .rooms
@@ -157,12 +184,12 @@ impl Widget for MessagesWidget {
     }
 }
 
-struct HeaderWidget {
+pub struct HeaderWidget {
     entries: Vec<(String, String)>,
 }
 
 impl HeaderWidget {
-    fn new(entries: Vec<(String, String)>) -> Self {
+    pub fn new(entries: Vec<(String, String)>) -> Self {
         Self { entries }
     }
 }

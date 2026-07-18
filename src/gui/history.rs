@@ -57,8 +57,6 @@ impl History {
             if i < slice.len() - start {continue;}
             if i >= (slice.len() - start) + length { break; } // after the window, so we can just break
             
-            println!("start: {}, end: {}", slice.len() - start, (slice.len() - start) + length);
-            
             // Save the HistoryRows
             history_rows.extend(row);
         }

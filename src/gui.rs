@@ -1,7 +1,9 @@
-mod login;
-mod messages;
+pub mod login;
+pub mod messages;
 mod sidebar;
+mod context_window;
 pub mod history;
+
 
 use std::io;
 use crossterm::event::{self, Event, KeyEventKind};
