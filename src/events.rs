@@ -270,7 +270,7 @@ pub async fn get_messages(
 
 // this is bare bones see
 // 8.2 Creation for more additions
-pub async fn create_room(
+pub async fn create_room( // TODO: link the error mutex so this can display errors
     auth_state: AuthState,
     name: &str,
     invites: Vec<&str>,

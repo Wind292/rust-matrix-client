@@ -71,6 +71,20 @@ pub struct CacheRoom {
 }
 
 
+impl CacheRoom { 
+    pub fn append(&mut self, mut newer_room: Self) {
+        self.state.before_token = newer_room.state.before_token;
+        self.timeline.before_token = newer_room.timeline.before_token;
+
+        self.state.events.append(&mut newer_room.state.events);
+        self.timeline.events.append(&mut newer_room.timeline.events);
+
+        self.state.total_history = newer_room.state.total_history;
+        self.timeline.total_history= newer_room.timeline.total_history;
+    }
+}
+
+
 impl Cache {
     pub async fn update_before(
         &mut self,
@@ -323,7 +337,7 @@ impl NameEvent {
     }
 
     fn summary(&self) -> String{
-        format!("{}", self.name.to_string())
+        format!("Room renamed")
     }
 
     fn display(&self) -> bool {

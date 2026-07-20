@@ -1,7 +1,9 @@
 use core::time;
 use std::error::Error;
+use std::time::Duration;
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
+use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::errors::{BoxError, CustomError};
@@ -61,12 +63,13 @@ pub fn async_sync(
 
         let mut event_state = EventState::new();
 
-        let resp = event_state.sync(auth_state, None).await;
+        let resp = event_state.sync(auth_state.clone(), None).await;
 
         match resp {
             Ok(_) => {}
             Err(e) => {
                 error_clone.lock().await.push(e.to_string());
+                state_updater_helper(rooms_mutex, cache_mutex, error, auth_state, event_state);
                 return;
             }
         }
@@ -84,6 +87,7 @@ pub fn async_sync(
                 error.clone().lock().await.push(e.to_string());
             }
         }
+        state_updater_helper(rooms_mutex, cache_mutex, error, auth_state, event_state);
     });
 }
 
@@ -115,12 +119,31 @@ pub fn state_updater_helper(
                 }
             }
 
-            // This method updates the room list automatically 
-            let update_caches = get_cache_rooms(&event_state, rooms.clone(), errors.clone()).await;
+            // This method updates the room list automatically
+            let update_caches: Option<Result<HashMap<String, CacheRoom>, Box<dyn Error + Send + Sync>>>
+                = get_cache_rooms(&event_state, rooms.clone(), errors.clone()).await;
 
-            4q
+            if let Some(Ok(updated_cache)) = update_caches {
+                let mut caches_lock = caches.lock().await;
 
+                for (roomid, update_room) in updated_cache {
+                    let possible_prexisting_room = caches_lock.get(&roomid);
 
+                    match caches_lock.entry(roomid) {
+                        // Room exists so we need to edit the prexisting one
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            entry.get_mut().append(update_room);
+                        }
+                        // Room does not exist so we just make a new entry
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(update_room);
+                        }
+                    }
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(20));
+                continue;
+            }
         }
     });
 }
@@ -163,7 +186,9 @@ async fn get_cache_rooms(
 
         // Format the room's names
         let mut room_name = roomid.chars().take(10).collect::<String>();
-        for e in &room.state.events {
+
+        // Check state first for a room name
+        for e in &room.state.events.iter().rev().collect::<Vec<&Value>>() {
             if e.get("type").unwrap_or_default() == "m.room.name" {
                 room_name = e
                     .get("content")
@@ -175,9 +200,24 @@ async fn get_cache_rooms(
             }
         }
 
+        // then check timeline and overwrite state if found a new one 
+        for e in room.timeline.events.iter().rev().collect::<Vec<&Value>>() {
+            if e.get("type").unwrap_or_default() == "m.room.name" {
+                room_name = e
+                    .get("content")
+                    .unwrap_or_default()
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+            }
+            break;
+        }
+         
+
         let mut rooms_lock = rooms_mutex.lock().await;
 
-        rooms_lock.retain(|(_, id)| id == roomid); // remove the old room from the list (if it exists)
+        rooms_lock.retain(|(_, id)| id != roomid); // remove the old room from the list (if it exists)
         rooms_lock.push(((room_name, subtext), roomid.to_string())); // add the new one
     }
 

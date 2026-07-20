@@ -109,7 +109,7 @@ impl Widget for SidebarWidget {
             };
             let line = Line::from(vec![
                 Span::styled(format!(" {}", name), name_style),
-                Span::raw(": "),
+                Span::raw(" — "),
                 Span::styled(
                     last_msg,
                     Style::default()

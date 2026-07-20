@@ -3,7 +3,7 @@ pub mod messages;
 mod sidebar;
 mod context_window;
 pub mod history;
-
+mod input_box;
 
 use std::io;
 use crossterm::event::{self, Event, KeyEventKind};

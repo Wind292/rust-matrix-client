@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, VecDeque}, sync::Arc};
 
 use ratatui::{buffer::Buffer, layout::Rect, text::{Line, Span}, widgets::{Paragraph, Widget}};
 use tokio::sync::Mutex;
@@ -11,19 +11,17 @@ pub struct History {
 
 impl History {
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
-        for (row_index, row) in self.messages.iter().enumerate() {
-            let y = area.y.saturating_add(row_index as u16);
+        let visible = self.messages.len().min(area.height as usize);
+        let start_index = self.messages.len() - visible; // drop oldest rows that don't fit
+        let y_offset = area.height as usize - visible;     // blank rows go on top, not bottom
+
+        for (row_index, row) in self.messages[start_index..].iter().enumerate() {
+            let y = area.y.saturating_add((y_offset + row_index) as u16);
             if y >= area.y.saturating_add(area.height) {
                 break;
             }
 
-            let row_area = Rect {
-                x: area.x,
-                y,
-                width: area.width,
-                height: 1,
-            };
-
+            let row_area = Rect { x: area.x, y, width: area.width, height: 1 };
             row.clone().render(row_area, buf);
         }
     }
@@ -44,27 +42,36 @@ impl History {
 
         let c = &c.unwrap().timeline;
 
-        let slice: Vec<&Event> = c.events[..].iter().clone().collect();
-        let mut history_rows: Vec<HistoryRow> = vec![];
+        let mut history_rows: VecDeque<HistoryRow> = VecDeque::new();
+        let mut i = 0usize; // rows counted so far, walking from the newest event backwards
 
-        let mut i = 0;
-        for e in slice.iter().rev() {
-            // Generated the formatted HistoryRows in order of oldest to newest
-            let row = HistoryRow::from_event((*e).clone());
-            // Increment the line counter
-            i += row.len(); 
-            // If you are outside the context window, do not save the lines
-            if i < slice.len() - start {continue;}
-            if i >= (slice.len() - start) + length { break; } // after the window, so we can just break
-            
-            // Save the HistoryRows
-            history_rows.extend(row);
+        for e in c.events.iter().rev() {
+            let row = HistoryRow::from_event(e.clone());
+            let row_len = row.len();
+
+            // Still within the "skip" zone closer to newest than `start` — count it, don't keep it
+            if i + row_len <= start {
+                i += row_len;
+                continue;
+            }
+
+            // Already collected `length` rows past the skip offset — stop
+            if i >= start + length {
+                break;
+            }
+
+            i += row_len;
+
+            // Push each row to the front, preserving internal order, so the deque
+            // ends up oldest -> newest without needing a separate full reverse.
+            for r in row.into_iter().rev() {
+                history_rows.push_front(r);
+            }
         }
 
-        Some( Self {
-            messages: history_rows
+        Some(Self {
+            messages: history_rows.into_iter().rev().collect(),
         })
-
     }
 }
 

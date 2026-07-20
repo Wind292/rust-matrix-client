@@ -20,6 +20,7 @@ use crate::errors::BoxError;
 use crate::gui::AppState;
 use crate::gui::context_window::{ContextWindow, RoomCreation};
 use crate::gui::history::History;
+use crate::gui::input_box::InputBoxWidget;
 use crate::gui::sidebar::SidebarWidget;
 use crate::utils;
 
@@ -130,14 +131,11 @@ impl MessagesWidget {
         self.current_room = Some(current_room.unwrap_or(&(("".to_string(), "".to_string()), "".to_string())).to_owned().1);
     }
 
-    async fn refresh_room_list(&mut self) {
+    async fn refresh_room_list(&mut self) { // This function probably does not work
         let rooms_mutex = self.rooms.clone();
         let auth = self.auth.clone();
         tokio::spawn( async move {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                utils::async_update_rooms(rooms_mutex.clone(), auth.clone());
-            }
+            utils::async_update_rooms(rooms_mutex.clone(), auth.clone());
         });
     }
 
@@ -161,6 +159,12 @@ impl Widget for MessagesWidget {
         let [title_rect, history_rect, chatbox_rect] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1), Constraint::Length(3)]).areas(messaging);
 
+        // let input_box = InputBoxWidget::new("hello world". to_string());
+        // input_box.render(chatbox_rect, buf);
+
+        InputBoxWidget::new(vec!["Hello world!!".to_string()])
+            .render(chatbox_rect, buf);
+
         HeaderWidget::new(vec![
             ("<esc>".to_string(), "quit".to_string()),
             ("<ctrl + l>".to_string(), "logout".to_string()),
@@ -177,6 +181,9 @@ impl Widget for MessagesWidget {
         SidebarWidget::new(list_rooms, self.sidebar_selection, self.current_room.clone()).render(sidebar, buf);
         
         let history = &History::try_from_cache(self.room_caches, self.current_room, self.scroll, area.height.into());
+        
+        
+        
         match history { 
             Some(h) => {h.render(history_rect, buf);},
             None => {},
